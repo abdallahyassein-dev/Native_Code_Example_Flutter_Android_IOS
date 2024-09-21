@@ -1,46 +1,61 @@
 import UIKit
 import Flutter
+import CoreMotion
 
 @UIApplicationMain
-@objc class AppDelegate: FlutterAppDelegate {
+class AppDelegate: FlutterAppDelegate {
+    var motionManager: CMMotionManager!
+    var eventSink: FlutterEventSink?
+
     override func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        let controller: FlutterViewController = window?.rootViewController as! FlutterViewController
-        let methodChannel = FlutterMethodChannel(name: "com.example.native/channel", binaryMessenger: controller.binaryMessenger)
+        
+        let controller = window?.rootViewController as! FlutterViewController
+        let accelerometerChannel = FlutterEventChannel(name: "com.example.accelerometer/data",
+                                                        binaryMessenger: controller.binaryMessenger)
+        accelerometerChannel.setStreamHandler(self)
+        
+        motionManager = CMMotionManager()
+        
+        return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    }
+}
 
-        methodChannel.setMethodCallHandler { (call: FlutterMethodCall, result: @escaping FlutterResult) in
-            if call.method == "calculateSum" {
-                // Extract the double values
-                if let args = call.arguments as? [String: Any],
-                   let num1 = args["num1"] as? Double,
-                   let num2 = args["num2"] as? Double {
-                    // Calculate the sum
-                    let sum = num1 + num2
-                    
-                   
-                    result(sum)
-                } else {
-                    result(FlutterError(code: "ERROR", message: "Invalid arguments", details: nil))
-                }
-            }
-            else if call.method == "getMyFullName" {
-              if let args = call.arguments as? [String: Any],
-              let firstName = args["first_name"] as? String,
-              let lastName = args["last_name"] as? String {
-                let fullName = "Your Full Name is : " + firstName + " " + lastName
-                result(fullName)
-              }
-              else{
-                result(FlutterError(code: "ERROR", message: "Invalid arguments", details: nil))
-              }
-            }
-             else {
-                result(FlutterMethodNotImplemented)
+extension AppDelegate: FlutterStreamHandler {
+    func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+        eventSink = events
+        
+        // Start sending accelerometer data
+        startAccelerometerUpdates()
+        
+        return nil
+    }
+
+    func onCancel(withArguments arguments: Any?) -> FlutterError? {
+        // Stop sending data when the listener cancels
+        stopAccelerometerUpdates()
+        eventSink = nil
+        return nil
+    }
+    
+    private func startAccelerometerUpdates() {
+        if motionManager.isAccelerometerAvailable {
+            motionManager.accelerometerUpdateInterval = 0.1 // Set update interval
+            motionManager.startAccelerometerUpdates(to: OperationQueue.current!) { (data, error) in
+                guard let data = data, error == nil else { return }
+                let accelerometerData: [String: Double] = [
+                    "x": data.acceleration.x,
+                    "y": data.acceleration.y,
+                    "z": data.acceleration.z
+                ]
+                self.eventSink?(accelerometerData) // Send data to Flutter
             }
         }
+    }
 
-        return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    private func stopAccelerometerUpdates() {
+        motionManager.stopAccelerometerUpdates()
     }
 }

@@ -1,39 +1,67 @@
 package com.example.write_native_code_exampel
 
-
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
-import io.flutter.plugin.common.MethodChannel
-import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 
-class MainActivity: FlutterActivity() {
-    private val CHANNEL = "com.example.native/channel"
+class MainActivity : FlutterActivity(), SensorEventListener {
 
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
+    private lateinit var sensorManager: SensorManager
+    private var accelerometer: Sensor? = null
+    private var eventSink: EventChannel.EventSink? = null
+    private val CHANNEL = "com.example.accelerometer/data"
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-            if (call.method == "calculateSum") {
-                // Extract the double values
-                val num1: Double = call.argument<Double>("num1") ?: 0.0
-                val num2: Double = call.argument<Double>("num2") ?: 0.0
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-                // Calculate the sum
-                val sum = num1 + num2
+        // Initialize sensor manager and accelerometer
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
-                // Return the result to Flutter
-                result.success(sum)
-            }
-            else if (call.method == "getMyFullName"){
-                val firstName: String = call.argument<String>("first_name") ?: ""
-                val lastName: String = call.argument<String>("last_name") ?: ""
+        // Set up event channel
+        EventChannel(flutterEngine?.dartExecutor?.binaryMessenger!!, CHANNEL)
+                .setStreamHandler(
+                        object : EventChannel.StreamHandler {
+                            override fun onListen(
+                                    arguments: Any?,
+                                    events: EventChannel.EventSink?
+                            ) {
+                                eventSink = events
+                                accelerometer?.also { sensor ->
+                                    sensorManager.registerListener(
+                                            this@MainActivity,
+                                            sensor,
+                                            SensorManager.SENSOR_DELAY_NORMAL
+                                    )
+                                }
+                            }
 
-                val fullName = "Your Full Name is : " + firstName + " " + lastName
+                            override fun onCancel(arguments: Any?) {
+                                sensorManager.unregisterListener(this@MainActivity)
+                                eventSink = null
+                            }
+                        }
+                )
+    }
 
-                result.success(fullName)
-            }
-            else {
-                result.notImplemented()
-            }
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
+            val data = mapOf("x" to event.values[0], "y" to event.values[1], "z" to event.values[2])
+            eventSink?.success(data) // Use the eventSink defined in the StreamHandler
         }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        // Optional, not needed in most cases
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        sensorManager.unregisterListener(this)
     }
 }
