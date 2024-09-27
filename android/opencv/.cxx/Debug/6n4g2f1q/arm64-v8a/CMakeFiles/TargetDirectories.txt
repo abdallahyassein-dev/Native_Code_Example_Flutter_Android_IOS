@@ -1,0 +1,3 @@
+/Users/abdallahyassein/work/Channel_Work/write_native_code_exampel/android/opencv/.cxx/Debug/6n4g2f1q/arm64-v8a/CMakeFiles/rebuild_cache.dir
+/Users/abdallahyassein/work/Channel_Work/write_native_code_exampel/android/opencv/.cxx/Debug/6n4g2f1q/arm64-v8a/CMakeFiles/edit_cache.dir
+/Users/abdallahyassein/work/Channel_Work/write_native_code_exampel/android/opencv/.cxx/Debug/6n4g2f1q/arm64-v8a/CMakeFiles/opencv_jni_shared.dir

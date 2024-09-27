@@ -1,67 +1,72 @@
 package com.example.write_native_code_exampel
 
-import android.content.Context
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
-import android.os.Bundle
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
-import io.flutter.plugin.common.EventChannel
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
+import org.opencv.android.OpenCVLoader
+import org.opencv.android.Utils
+import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
 
-class MainActivity : FlutterActivity(), SensorEventListener {
+class MainActivity : FlutterActivity() {
+    private val CHANNEL = "opencv_channel"
 
-    private lateinit var sensorManager: SensorManager
-    private var accelerometer: Sensor? = null
-    private var eventSink: EventChannel.EventSink? = null
-    private val CHANNEL = "com.example.accelerometer/data"
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        // Initialize sensor manager and accelerometer
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-
-        // Set up event channel
-        EventChannel(flutterEngine?.dartExecutor?.binaryMessenger!!, CHANNEL)
-                .setStreamHandler(
-                        object : EventChannel.StreamHandler {
-                            override fun onListen(
-                                    arguments: Any?,
-                                    events: EventChannel.EventSink?
-                            ) {
-                                eventSink = events
-                                accelerometer?.also { sensor ->
-                                    sensorManager.registerListener(
-                                            this@MainActivity,
-                                            sensor,
-                                            SensorManager.SENSOR_DELAY_NORMAL
-                                    )
-                                }
-                            }
-
-                            override fun onCancel(arguments: Any?) {
-                                sensorManager.unregisterListener(this@MainActivity)
-                                eventSink = null
-                            }
-                        }
-                )
-    }
-
-    override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
-            val data = mapOf("x" to event.values[0], "y" to event.values[1], "z" to event.values[2])
-            eventSink?.success(data) // Use the eventSink defined in the StreamHandler
+    init {
+        // Load OpenCV native library
+        if (!OpenCVLoader.initLocal()) {
+            Log.e("OpenCV", "OpenCV initialization failed")
+        } else {
+            Log.d("OpenCV", "OpenCV initialized successfully")
         }
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // Optional, not needed in most cases
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler {
+                call,
+                result ->
+            if (call.method == "processImage") {
+                val imageBytes = call.arguments as ByteArray
+                val processedBytes = processImageWithOpenCV(imageBytes)
+                if (processedBytes != null) {
+                    result.success(processedBytes)
+                } else {
+                    result.error("ERROR", "Failed to process image", null)
+                }
+            }
+        }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        sensorManager.unregisterListener(this)
+    private fun processImageWithOpenCV(imageBytes: ByteArray): ByteArray? {
+        try {
+            // Convert ByteArray to Bitmap
+            val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+
+            // Convert Bitmap to OpenCV Mat
+            val mat = Mat()
+            Utils.bitmapToMat(bitmap, mat)
+
+            // Convert to grayscale
+            val grayMat = Mat()
+            Imgproc.cvtColor(mat, grayMat, Imgproc.COLOR_BGR2GRAY)
+
+            // Convert Mat back to Bitmap
+            val grayBitmap =
+                    Bitmap.createBitmap(grayMat.cols(), grayMat.rows(), Bitmap.Config.ARGB_8888)
+            Utils.matToBitmap(grayMat, grayBitmap)
+
+            // Convert Bitmap to ByteArray
+            val stream = ByteArrayOutputStream()
+            grayBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            return stream.toByteArray()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
     }
 }
